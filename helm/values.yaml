@@ -1,0 +1,229 @@
+# Default values for pypiserver Helm chart
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+## PyPI Server Configuration
+pypiserver:
+  # PyPI server image
+  image:
+    repository: pypiserver/pypiserver
+    pullPolicy: IfNotPresent
+    tag: "v2.0.1"  # https://github.com/pypiserver/pypiserver/releases
+
+  # Replica count (set to 2+ for HA)
+  replicaCount: 1
+
+  # Resource limits
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Autoscaling (optional)
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
+  # PyPI server command-line arguments
+  # https://pypi.org/project/pypiserver/#quickstart-installation-and-usage
+  extraArgs:
+    - --verbose  # Enable verbose logging
+    # - --disable-fallback  # Disable fallback to PyPI.org
+    # - --overwrite  # Allow overwriting existing packages
+
+## Storage Configuration
+storage:
+  # Storage backend: local, s3, or gcs
+  backend: local
+
+  # Local storage (PersistentVolume)
+  local:
+    enabled: true
+    storageClass: ""  # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    # Existing PVC (optional)
+    existingClaim: ""
+
+  # S3 backend
+  # Two modes:
+  # 1. Direct S3 (env vars) - requires pypiserver built-in S3 support
+  # 2. CSI driver (PVC) - mounts S3 bucket as a volume (RECOMMENDED)
+  s3:
+    enabled: false
+    bucket: pypi-packages
+    region: us-east-1
+    # Access credentials (static or IAM role)
+    accessKeyId: ""
+    secretAccessKey: ""
+    # Existing secret with credentials (optional)
+    existingSecret: ""
+
+    # CSI driver configuration (RECOMMENDED for production)
+    # Mounts S3 bucket as a PersistentVolume via CSI-S3 driver
+    # Supports: AWS S3, Hetzner Object Storage, Minio, etc.
+    csi:
+      enabled: false
+      # S3 endpoint (for S3-compatible services like Hetzner)
+      # AWS S3: https://s3.amazonaws.com
+      # Hetzner: https://fsn1.your-objectstorage.com
+      endpoint: "https://s3.amazonaws.com"
+      # Optional prefix within bucket (e.g., "pypi/" to share bucket)
+      prefix: ""
+      # Nominal size (S3 grows dynamically, this is just for K8s)
+      size: "1Ti"
+
+  # Google Cloud Storage (future support)
+  gcs:
+    enabled: false
+    bucket: pypi-packages
+
+## Authentication Configuration
+auth:
+  # Enable authentication (recommended for private PyPI)
+  enabled: true
+
+  # Authentication method: htpasswd or ldap
+  method: htpasswd
+
+  # htpasswd configuration
+  htpasswd:
+    # Generate with: htpasswd -c htpasswd.txt username
+    # Or use: docker run --rm httpd:alpine htpasswd -nB username
+    # Example content:
+    # user:$2y$05$... (bcrypt hash)
+    content: |
+      pypi:$2y$05$8z9L5XJ.WGKHZf4Kz7VJKu0r5q3t.Wz5
+    # Use existing secret (optional)
+    existingSecret: ""
+    secretKey: htpasswd
+
+  # LDAP configuration (future support)
+  ldap:
+    enabled: false
+    url: ldap://ldap.example.com
+    bindDn: ""
+    bindPassword: ""
+    searchBase: "ou=users,dc=example,dc=com"
+
+## Service Configuration
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+  # Example: AWS Load Balancer
+  # service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+## Ingress Configuration
+ingress:
+  enabled: true
+  className: nginx  # or: traefik, haproxy, etc.
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"  # No upload limit
+    # nginx.ingress.kubernetes.io/auth-type: basic
+    # nginx.ingress.kubernetes.io/auth-secret: pypi-auth
+  hosts:
+    - host: pypi.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: pypi-tls
+      hosts:
+        - pypi.example.com
+
+## Monitoring & Observability
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: /metrics
+    # ServiceMonitor for Prometheus Operator
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+
+  # Grafana dashboard (ConfigMap)
+  grafana:
+    enabled: false
+    dashboardConfigMap: pypi-dashboard
+
+## Security
+securityContext:
+  # Pod security context
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+## Pod Disruption Budget (for HA)
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+## Node selection
+nodeSelector: {}
+  # kubernetes.io/arch: amd64
+
+tolerations: []
+  # - key: "node-role.kubernetes.io/control-plane"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"
+
+affinity: {}
+  # podAntiAffinity:
+  #   preferredDuringSchedulingIgnoredDuringExecution:
+  #     - weight: 100
+  #       podAffinityTerm:
+  #         labelSelector:
+  #           matchExpressions:
+  #             - key: app.kubernetes.io/name
+  #               operator: In
+  #               values:
+  #                 - pypiserver
+  #         topologyKey: kubernetes.io/hostname
+
+## Additional labels for all resources
+labels: {}
+
+## Additional annotations for all resources
+annotations: {}
+
+## Init containers (e.g., for S3 mount)
+initContainers: []
+  # - name: s3-mount
+  #   image: efrecon/s3fs:1.91
+  #   command: ["/bin/sh", "-c"]
+  #   args:
+  #     - "s3fs $S3_BUCKET /packages -o passwd_file=/etc/s3fs/passwd"
+  #   volumeMounts:
+  #     - name: packages
+  #       mountPath: /packages
+
+## Sidecar containers (e.g., for metrics exporter)
+sidecars: []
+
+## Extra volumes
+extraVolumes: []
+
+## Extra volume mounts
+extraVolumeMounts: []

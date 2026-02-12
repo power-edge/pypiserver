@@ -1,0 +1,33 @@
+apiVersion: v2
+name: pypiserver
+description: Production-ready PyPI server with modern Kubernetes features
+type: application
+version: 1.0.0
+appVersion: "2.0.1"
+keywords:
+  - pypi
+  - python
+  - package
+  - registry
+home: https://github.com/power-edge/pypi
+sources:
+  - https://github.com/pypiserver/pypiserver
+maintainers:
+  - name: power-edge
+    email: contact@power-edge.dev
+icon: https://pypi.org/static/images/logo-small.svg
+annotations:
+  # Artifact Hub annotations
+  artifacthub.io/changes: |
+    - kind: added
+      description: Production-ready PyPI server
+    - kind: added
+      description: S3 backend support
+    - kind: added
+      description: Auto-TLS with cert-manager
+    - kind: added
+      description: Prometheus metrics
+  artifacthub.io/license: MIT
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/power-edge/pypi/blob/main/helm/README.md

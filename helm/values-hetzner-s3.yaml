@@ -1,0 +1,164 @@
+# Example values for PyPI server with Hetzner Object Storage (S3-compatible)
+# This uses CSI-S3 driver to mount Hetzner bucket as a PersistentVolume
+#
+# Prerequisites:
+# 1. CSI-S3 driver installed in cluster:
+#    kubectl apply -f https://raw.githubusercontent.com/ctrox/csi-s3/master/deploy/kubernetes/provisioner.yaml
+#    kubectl apply -f https://raw.githubusercontent.com/ctrox/csi-s3/master/deploy/kubernetes/attacher.yaml
+#    kubectl apply -f https://raw.githubusercontent.com/ctrox/csi-s3/master/deploy/kubernetes/csi-s3.yaml
+#
+# 2. Hetzner Object Storage bucket created:
+#    - Create bucket via Hetzner Cloud Console
+#    - Get endpoint URL (e.g., https://fsn1.your-objectstorage.com)
+#    - Generate S3 access keys
+#
+# 3. Install chart:
+#    helm install pypi ./helm -f values-hetzner-s3.yaml \
+#      --set storage.s3.accessKeyId=YOUR_KEY \
+#      --set storage.s3.secretAccessKey=YOUR_SECRET
+
+## PyPI Server Configuration
+pypiserver:
+  # Run 2+ replicas for HA (S3 CSI supports ReadWriteMany)
+  replicaCount: 2
+
+  # Enable autoscaling for high traffic
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+  # Resource limits
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+## Storage Configuration
+storage:
+  # Use S3-backed storage via CSI driver
+  backend: s3
+
+  # Disable local PV
+  local:
+    enabled: false
+
+  # S3 configuration
+  s3:
+    enabled: true
+
+    # Hetzner Object Storage bucket
+    # Create via: Hetzner Cloud Console → Object Storage
+    bucket: tech-screen-storage  # Replace with your bucket name
+
+    # Hetzner doesn't use AWS regions, but some S3 clients require it
+    region: us-east-1  # Dummy region for compatibility
+
+    # Access credentials
+    # IMPORTANT: Don't commit these! Use --set or external secrets
+    accessKeyId: ""  # Set via --set or CI/CD
+    secretAccessKey: ""  # Set via --set or CI/CD
+
+    # CSI driver configuration (RECOMMENDED)
+    csi:
+      enabled: true
+
+      # Hetzner Object Storage endpoint
+      # Format: https://<location>.your-objectstorage.com
+      # Locations: fsn1 (Falkenstein), nbg1 (Nuremberg), hel1 (Helsinki)
+      endpoint: "https://fsn1.your-objectstorage.com"
+
+      # Optional: Use prefix to share bucket with other apps
+      # Example: "pypi/" stores packages under bucket/pypi/
+      # Leave empty to use root of bucket
+      prefix: "pypi/"
+
+      # Nominal size (S3 grows dynamically, this is just for Kubernetes)
+      size: "1Ti"
+
+## Authentication
+auth:
+  enabled: true
+  method: htpasswd
+
+  htpasswd:
+    # Generate password:
+    # docker run --rm httpd:alpine htpasswd -nB myuser
+    content: |
+      pypi:$2y$05$CHANGE_THIS_HASH
+
+## Ingress (TLS via cert-manager)
+ingress:
+  enabled: true
+  className: nginx  # Or traefik
+
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Hetzner-specific annotations (if using Hetzner Cloud Controller)
+    # hcloud-cloud-controller-manager.hetzner.cloud/location: fsn1
+
+  hosts:
+    - host: pypi.tech-screen.com  # Replace with your domain
+      paths:
+        - path: /
+          pathType: Prefix
+
+  tls:
+    - secretName: pypi-tls
+      hosts:
+        - pypi.tech-screen.com
+
+## Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true  # Requires Prometheus Operator
+
+## Security
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+## Cost Optimization
+# Hetzner Object Storage pricing (as of 2024):
+# - Storage: €0.005/GB/month (~$0.0055/GB/month)
+# - Egress: First 1TB free, then €0.01/GB
+#
+# Example costs for 1TB of packages:
+# Storage:  1000GB × $0.0055/GB = $5.50/month
+# Egress:   First 1TB free
+# Total:    ~$5.50/month 🎉
+#
+# Compare to:
+# - AWS S3: $23/month (storage) + $90/month (egress) = $113/month
+# - Hetzner Block Storage: $80/month
+# - PostgreSQL: $200/month
+#
+# Hetzner S3 is 95% cheaper than AWS! 💰
+
+## High Availability Notes
+# With S3 CSI driver:
+# - Multiple pods can mount same volume (ReadWriteMany)
+# - No single point of failure (S3 is highly available)
+# - Pods can be scheduled on different nodes
+# - Automatic failover if pod/node fails
+#
+# Recommended setup:
+# - replicaCount: 2+
+# - autoscaling.enabled: true
+# - Pod anti-affinity (spread across nodes)

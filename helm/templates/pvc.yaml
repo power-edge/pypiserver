@@ -1,0 +1,28 @@
+{{- if or (and .Values.storage.local.enabled (not .Values.storage.local.existingClaim)) (and .Values.storage.s3.enabled .Values.storage.s3.csi.enabled) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pypiserver.fullname" . }}
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+spec:
+  {{- if and .Values.storage.s3.enabled .Values.storage.s3.csi.enabled }}
+  # S3-backed PVC via CSI driver
+  accessModes:
+    - ReadWriteMany  # S3 CSI supports multiple pods mounting same volume
+  storageClassName: {{ include "pypiserver.fullname" . }}-s3
+  resources:
+    requests:
+      storage: {{ .Values.storage.s3.csi.size | default "1Ti" }}  # Nominal size, S3 grows dynamically
+  {{- else if .Values.storage.local.enabled }}
+  # Local PersistentVolume
+  accessModes:
+    - {{ .Values.storage.local.accessMode }}
+  {{- if .Values.storage.local.storageClass }}
+  storageClassName: {{ .Values.storage.local.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.local.size }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pypiserver.fullname" . }}
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.pypiserver.autoscaling.enabled }}
+  replicas: {{ .Values.pypiserver.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "pypiserver.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.auth.enabled }}
+        checksum/config: {{ include (print $.Template.BasePath "/auth-secret.yaml") . | sha256sum }}
+        {{- end }}
+      {{- with .Values.annotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "pypiserver.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.pypiserver.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: pypiserver
+          image: "{{ .Values.pypiserver.image.repository }}:{{ .Values.pypiserver.image.tag }}"
+          imagePullPolicy: {{ .Values.pypiserver.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command:
+            - pypi-server
+            - run
+            - -p
+            - "8080"
+            - -P
+            - /auth/htpasswd
+            {{- if .Values.auth.enabled }}
+            - -a
+            - update,download,list
+            {{- end }}
+            {{- range .Values.pypiserver.extraArgs }}
+            - {{ . }}
+            {{- end }}
+            - /packages
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- if .Values.monitoring.prometheus.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.monitoring.prometheus.port }}
+              protocol: TCP
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.pypiserver.resources | nindent 12 }}
+          volumeMounts:
+            - name: packages
+              mountPath: /packages
+            {{- if .Values.auth.enabled }}
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+          {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.sidecars }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: packages
+          {{- if or .Values.storage.local.enabled (and .Values.storage.s3.enabled .Values.storage.s3.csi.enabled) }}
+          # PersistentVolumeClaim (local or S3-backed via CSI)
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.local.existingClaim | default (include "pypiserver.fullname" .) }}
+          {{- else if .Values.storage.s3.enabled }}
+          # Direct S3 (legacy mode, not using CSI)
+          emptyDir: {}  # S3 mounted via environment variables
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.auth.enabled }}
+        - name: auth
+          secret:
+            secretName: {{ .Values.auth.htpasswd.existingSecret | default (printf "%s-auth" (include "pypiserver.fullname" .)) }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
