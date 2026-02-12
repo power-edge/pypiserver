@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "test-package"
+version = "0.1.0"
+description = "Test package for PyPI server testing"
+authors = [
+    {name = "Test User", email = "test@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://github.com/power-edge/pypi"

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-simple-index"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: curlimages/curl:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          # Test /simple/ endpoint (pip index)
+          echo "Testing /simple/ endpoint..."
+          curl -f -v http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}/simple/
+
+          # Test root endpoint
+          echo "Testing root endpoint..."
+          curl -f -v http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}/
+
+          echo "All tests passed!"

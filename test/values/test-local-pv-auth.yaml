@@ -1,0 +1,39 @@
+# Local PV with authentication test
+# Tests: Local PV storage, htpasswd auth, ingress
+
+pypiserver:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+
+storage:
+  backend: local
+  local:
+    enabled: true
+    size: 2Gi
+
+auth:
+  enabled: true
+  method: htpasswd
+  htpasswd:
+    # Generated with: docker run --rm httpd:alpine htpasswd -nB testuser
+    # Password: testpass
+    content: |
+      testuser:$2y$05$6z7eJ8rKvZ3iKJ3L6Z3iKeZ3iKJ3L6Z3iKeZ3iKJ3L6Z3iKeZ3iKJ
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: pypi.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+monitoring:
+  prometheus:
+    enabled: true

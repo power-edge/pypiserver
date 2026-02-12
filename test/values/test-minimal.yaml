@@ -1,0 +1,25 @@
+# Minimal test configuration
+# Tests: Basic PyPI server with no auth, no ingress
+
+pypiserver:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+
+storage:
+  backend: local
+  local:
+    enabled: true
+    size: 1Gi
+
+auth:
+  enabled: false
+
+ingress:
+  enabled: false
+
+monitoring:
+  prometheus:
+    enabled: false

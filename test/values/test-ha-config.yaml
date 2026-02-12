@@ -1,0 +1,66 @@
+# High availability test
+# Tests: Multiple replicas, autoscaling, PDB
+
+pypiserver:
+  replicaCount: 2
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+
+storage:
+  backend: local
+  local:
+    enabled: true
+    size: 5Gi
+    accessMode: ReadWriteOnce
+
+auth:
+  enabled: true
+  method: htpasswd
+  htpasswd:
+    content: |
+      testuser:$2y$05$6z7eJ8rKvZ3iKJ3L6Z3iKeZ3iKJ3L6Z3iKeZ3iKJ3L6Z3iKeZ3iKJ
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: pypi.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+monitoring:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - pypiserver
+          topologyKey: kubernetes.io/hostname

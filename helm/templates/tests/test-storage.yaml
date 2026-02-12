@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-storage"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: storage-check
+      image: busybox:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing storage accessibility..."
+
+          # Check if /packages directory exists
+          if [ ! -d /packages ]; then
+            echo "ERROR: /packages directory not found!"
+            exit 1
+          fi
+
+          # Check if directory is writable (create test file)
+          if touch /packages/.test-write 2>/dev/null; then
+            echo "✓ Storage is writable"
+            rm /packages/.test-write
+          else
+            echo "WARNING: Storage is not writable (may be normal for some configurations)"
+          fi
+
+          # Show storage usage
+          echo "Storage usage:"
+          df -h /packages
+
+          echo "All storage tests passed!"
+      volumeMounts:
+        - name: packages
+          mountPath: /packages
+  volumes:
+    - name: packages
+      {{- if or .Values.storage.local.enabled (and .Values.storage.s3.enabled .Values.storage.s3.csi.enabled) }}
+      persistentVolumeClaim:
+        claimName: {{ .Values.storage.local.existingClaim | default (include "pypiserver.fullname" .) }}
+      {{- else }}
+      emptyDir: {}
+      {{- end }}

@@ -1,0 +1,42 @@
+# MinIO S3 backend test
+# Tests: S3 CSI driver with MinIO, no auth
+
+pypiserver:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+
+storage:
+  backend: s3
+  local:
+    enabled: false
+  s3:
+    enabled: true
+    bucket: pypi-packages
+    region: us-east-1
+    accessKeyId: minioadmin
+    secretAccessKey: minioadmin
+    csi:
+      enabled: true
+      endpoint: "http://minio:9000"
+      prefix: ""
+      size: "10Gi"
+
+auth:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: pypi.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+monitoring:
+  prometheus:
+    enabled: false
