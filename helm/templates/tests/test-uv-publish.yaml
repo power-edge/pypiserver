@@ -1,0 +1,155 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-uv-publish"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "25"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: uv-publish-test
+      image: ghcr.io/astral-sh/uv:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          set -e
+
+          echo "=== UV Publish Test ==="
+
+          PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+
+          # Create a simple Python project with uv
+          echo "Creating test project with uv..."
+          mkdir -p /tmp/uv-test-project
+          cd /tmp/uv-test-project
+
+          # Initialize uv project
+          uv init --name uv-test-package --lib
+
+          # Update pyproject.toml with version
+          cat > pyproject.toml << 'EOF'
+          [project]
+          name = "uv-test-package"
+          version = "1.0.0"
+          description = "Test package published via uv"
+          requires-python = ">=3.8"
+
+          [build-system]
+          requires = ["hatchling"]
+          build-backend = "hatchling.build"
+          EOF
+
+          # Create package code
+          mkdir -p src/uv_test_package
+          cat > src/uv_test_package/__init__.py << 'EOF'
+          """UV test package."""
+          __version__ = "1.0.0"
+
+          def hello_uv():
+              return "Hello from uv-published package!"
+          EOF
+
+          cat > README.md << 'EOF'
+          # UV Test Package
+          This package was published using `uv publish` to test modern Python tooling.
+          EOF
+
+          # Build the package
+          echo "Building package with uv..."
+          uv build || {
+            echo "ERROR: uv build failed"
+            exit 1
+          }
+
+          echo "✓ Package built successfully"
+
+          # Verify dist directory was created
+          if [ ! -d dist ]; then
+            echo "ERROR: dist directory not created"
+            exit 1
+          fi
+
+          echo "✓ Distribution files created"
+
+          # List what was built
+          echo "Built files:"
+          ls -lh dist/
+
+          {{- if .Values.auth.enabled }}
+          # Publish with authentication
+          echo "Publishing package with uv (with auth)..."
+
+          # uv publish uses environment variables for credentials
+          export UV_PUBLISH_URL="$PYPI_URL/"
+          export UV_PUBLISH_USERNAME="testuser"
+          export UV_PUBLISH_PASSWORD="testpass"
+
+          uv publish || {
+            echo "ERROR: uv publish failed (with auth)"
+            exit 1
+          }
+          {{- else }}
+          # Publish without authentication
+          echo "Publishing package with uv (no auth)..."
+
+          # For non-authenticated pypiserver, we still need to provide credentials
+          # but they can be anything
+          export UV_PUBLISH_URL="$PYPI_URL/"
+          export UV_PUBLISH_USERNAME="anonymous"
+          export UV_PUBLISH_PASSWORD="anonymous"
+
+          uv publish || {
+            echo "ERROR: uv publish failed (no auth)"
+            exit 1
+          }
+          {{- end }}
+
+          echo "✓ Package published successfully with uv"
+
+          # Verify package appears in index
+          echo "Verifying package in PyPI index..."
+          apk add --no-cache curl
+
+          sleep 2  # Give server moment to index
+
+          curl -f "$PYPI_URL/simple/" | grep -q "uv-test-package" || {
+            echo "ERROR: Package not found in /simple/ index"
+            echo "Available packages:"
+            curl -s "$PYPI_URL/simple/"
+            exit 1
+          }
+
+          echo "✓ Package found in index"
+
+          # Verify package detail page
+          curl -f "$PYPI_URL/simple/uv-test-package/" | grep -q "uv_test_package-1.0.0" || {
+            echo "ERROR: Package files not found in detail page"
+            exit 1
+          }
+
+          echo "✓ Package detail page correct"
+
+          # Install and test the package with uv
+          echo "Installing package with uv..."
+          uv pip install --index-url "$PYPI_URL/simple/" uv-test-package==1.0.0 || {
+            echo "ERROR: Failed to install package with uv"
+            exit 1
+          }
+
+          echo "✓ Package installed with uv"
+
+          # Verify package works
+          echo "Testing package functionality..."
+          python3 -c "from uv_test_package import hello_uv; result = hello_uv(); print(f'Result: {result}')" || {
+            echo "ERROR: Package import/function failed"
+            exit 1
+          }
+
+          echo "✓ Package works correctly"
+
+          echo ""
+          echo "=== All UV publish tests passed! ==="

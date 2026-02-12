@@ -1,0 +1,47 @@
+# S3 CSI with authentication test
+# Tests: S3 backend + htpasswd authentication
+
+pypiserver:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+
+storage:
+  backend: s3
+  local:
+    enabled: false
+  s3:
+    enabled: true
+    bucket: pypi-packages
+    region: us-east-1
+    accessKeyId: minioadmin
+    secretAccessKey: minioadmin
+    csi:
+      enabled: true
+      endpoint: "http://minio:9000"
+      prefix: "s3-auth/"
+      size: "10Gi"
+
+auth:
+  enabled: true
+  method: htpasswd
+  htpasswd:
+    # Username: testuser, Password: testpass
+    content: |
+      testuser:$2y$05$vW7PYPe9.VL1aYh8DcJlOuqEr3mVN9C3y/HU9VQzC8qbKwWbGKdTK
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: pypi.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+monitoring:
+  prometheus:
+    enabled: false

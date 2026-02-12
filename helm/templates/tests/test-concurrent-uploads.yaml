@@ -1,0 +1,201 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-concurrent"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "35"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: concurrent-test
+      image: python:3.11-slim
+      command: ['sh', '-c']
+      args:
+        - |
+          set -e
+
+          echo "=== Concurrent Uploads Test ==="
+
+          PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+
+          # Install tools
+          pip install --quiet twine build
+
+          # Create 5 different packages
+          echo "Creating 5 test packages..."
+          for i in 1 2 3 4 5; do
+            mkdir -p /tmp/concurrent-pkg-$i/concurrentpkg$i
+
+            cat > /tmp/concurrent-pkg-$i/pyproject.toml << EOF
+          [build-system]
+          requires = ["setuptools>=45"]
+          build-backend = "setuptools.build_meta"
+
+          [project]
+          name = "concurrent-pkg-$i"
+          version = "1.0.0"
+          description = "Test package $i for concurrent upload testing"
+          requires-python = ">=3.8"
+          EOF
+
+            cat > /tmp/concurrent-pkg-$i/concurrentpkg$i/__init__.py << EOF
+          """Concurrent test package $i."""
+          __version__ = "1.0.0"
+          package_number = $i
+
+          def get_number():
+              return $i
+          EOF
+
+            # Build package
+            echo "Building package $i..."
+            cd /tmp/concurrent-pkg-$i
+            python -m build --quiet
+            echo "✓ Package $i built"
+          done
+
+          echo ""
+          echo "Uploading 5 packages concurrently..."
+
+          # Create upload script for each package
+          for i in 1 2 3 4 5; do
+            cat > /tmp/upload-$i.sh << 'SCRIPT'
+          #!/bin/sh
+          set -e
+          PACKAGE_NUM=$1
+          PYPI_URL=$2
+          cd /tmp/concurrent-pkg-$PACKAGE_NUM
+          {{- if .Values.auth.enabled }}
+          twine upload \
+            --repository-url "$PYPI_URL" \
+            --username testuser \
+            --password testpass \
+            --disable-progress-bar \
+            --non-interactive \
+            dist/*.tar.gz
+          {{- else }}
+          twine upload \
+            --repository-url "$PYPI_URL" \
+            --disable-progress-bar \
+            --non-interactive \
+            dist/*.tar.gz
+          {{- end }}
+          echo "✓ Package $PACKAGE_NUM uploaded"
+          SCRIPT
+
+            chmod +x /tmp/upload-$i.sh
+          done
+
+          # Upload all packages in parallel
+          /tmp/upload-1.sh 1 "$PYPI_URL" &
+          PID1=$!
+          /tmp/upload-2.sh 2 "$PYPI_URL" &
+          PID2=$!
+          /tmp/upload-3.sh 3 "$PYPI_URL" &
+          PID3=$!
+          /tmp/upload-4.sh 4 "$PYPI_URL" &
+          PID4=$!
+          /tmp/upload-5.sh 5 "$PYPI_URL" &
+          PID5=$!
+
+          echo "Waiting for all uploads to complete..."
+
+          # Wait for all background jobs
+          FAILED=0
+
+          wait $PID1 || FAILED=1
+          wait $PID2 || FAILED=1
+          wait $PID3 || FAILED=1
+          wait $PID4 || FAILED=1
+          wait $PID5 || FAILED=1
+
+          if [ $FAILED -eq 1 ]; then
+            echo "ERROR: One or more concurrent uploads failed"
+            exit 1
+          fi
+
+          echo "✓ All concurrent uploads completed"
+
+          # Verify all packages are in the index
+          echo ""
+          echo "Verifying all packages in index..."
+
+          sleep 2  # Give server moment to index
+
+          for i in 1 2 3 4 5; do
+            curl -f "$PYPI_URL/simple/" | grep -q "concurrent-pkg-$i" || {
+              echo "ERROR: Package $i not found in index"
+              echo "Available packages:"
+              curl -s "$PYPI_URL/simple/"
+              exit 1
+            }
+            echo "✓ Package $i found in index"
+          done
+
+          # Verify package detail pages
+          echo ""
+          echo "Verifying package detail pages..."
+
+          for i in 1 2 3 4 5; do
+            curl -f "$PYPI_URL/simple/concurrent-pkg-$i/" | grep -q "concurrent.pkg.$i-1.0.0" || {
+              echo "ERROR: Package $i detail page incomplete"
+              exit 1
+            }
+            echo "✓ Package $i detail page OK"
+          done
+
+          # Test downloading and installing all packages
+          echo ""
+          echo "Testing installation of all packages..."
+
+          for i in 1 2 3 4 5; do
+            pip install --quiet --index-url "$PYPI_URL/simple/" concurrent-pkg-$i==1.0.0 || {
+              echo "ERROR: Failed to install package $i"
+              exit 1
+            }
+
+            # Verify package works
+            RESULT=$(python -c "import concurrentpkg$i; print(concurrentpkg$i.get_number())")
+            if [ "$RESULT" != "$i" ]; then
+              echo "ERROR: Package $i returned wrong value: $RESULT (expected $i)"
+              exit 1
+            fi
+
+            echo "✓ Package $i installed and works correctly"
+            pip uninstall -y concurrent-pkg-$i
+          done
+
+          # Test concurrent downloads
+          echo ""
+          echo "Testing concurrent downloads..."
+
+          # Install all 5 packages at once
+          pip install --quiet --index-url "$PYPI_URL/simple/" \
+            concurrent-pkg-1 \
+            concurrent-pkg-2 \
+            concurrent-pkg-3 \
+            concurrent-pkg-4 \
+            concurrent-pkg-5 || {
+            echo "ERROR: Concurrent installation failed"
+            exit 1
+          }
+
+          echo "✓ Concurrent installation successful"
+
+          # Verify all packages work
+          for i in 1 2 3 4 5; do
+            python -c "import concurrentpkg$i; assert concurrentpkg$i.get_number() == $i" || {
+              echo "ERROR: Package $i verification failed after concurrent install"
+              exit 1
+            }
+          done
+
+          echo "✓ All packages work after concurrent installation"
+
+          echo ""
+          echo "=== All concurrent operations tests passed! ==="
+          echo "Successfully tested 5 concurrent uploads and installations"

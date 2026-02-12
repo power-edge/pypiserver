@@ -1,0 +1,164 @@
+# Docker Compose test configuration
+# Tests PyPI server without Kubernetes - useful for quick local validation
+#
+# Usage:
+#   docker compose -f docker-compose.test.yaml up --abort-on-container-exit
+#   docker compose -f docker-compose.test.yaml down -v
+
+version: '3.8'
+
+services:
+  pypi:
+    image: pypiserver/pypiserver:v2.0.1
+    container_name: pypi-test-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - pypi-packages:/data/packages
+    command: run -p 8080 -a . -P . /data/packages
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  test-twine-upload:
+    image: python:3.11-slim
+    container_name: pypi-test-twine
+    depends_on:
+      pypi:
+        condition: service_healthy
+    volumes:
+      - ./test/fixtures/test-package:/workspace
+    environment:
+      - PYPI_URL=http://pypi:8080
+    command: >
+      sh -c "
+        set -e
+        echo '=== Testing twine upload ===' &&
+        pip install --quiet twine build &&
+        cd /workspace &&
+        python -m build &&
+        twine upload --repository-url $$PYPI_URL --disable-progress-bar dist/* &&
+        echo '✓ Package uploaded successfully'
+      "
+
+  test-pip-install:
+    image: python:3.11-slim
+    container_name: pypi-test-pip
+    depends_on:
+      test-twine-upload:
+        condition: service_completed_successfully
+    environment:
+      - PYPI_URL=http://pypi:8080
+    command: >
+      sh -c "
+        set -e
+        echo '=== Testing pip install ===' &&
+        sleep 2 &&
+        pip install --index-url $$PYPI_URL/simple/ test-package &&
+        python -c 'import test_package; print(test_package.hello())' &&
+        echo '✓ Package installed and works'
+      "
+
+  test-uv:
+    image: ghcr.io/astral-sh/uv:latest
+    container_name: pypi-test-uv
+    depends_on:
+      test-pip-install:
+        condition: service_completed_successfully
+    environment:
+      - PYPI_URL=http://pypi:8080
+    working_dir: /workspace
+    command: >
+      sh -c "
+        set -e
+        echo '=== Testing uv publish ===' &&
+
+        uv init --name uv-docker-test --lib &&
+        cd uv-docker-test &&
+
+        cat > pyproject.toml << 'EOF'
+        [project]
+        name = 'uv-docker-test'
+        version = '1.0.0'
+        requires-python = '>=3.8'
+        [build-system]
+        requires = ['hatchling']
+        build-backend = 'hatchling.build'
+        EOF
+
+        mkdir -p src/uv_docker_test &&
+        echo '__version__ = \"1.0.0\"' > src/uv_docker_test/__init__.py &&
+
+        uv build &&
+
+        export UV_PUBLISH_URL=$$PYPI_URL/ &&
+        export UV_PUBLISH_USERNAME=anonymous &&
+        export UV_PUBLISH_PASSWORD=anonymous &&
+        uv publish &&
+
+        echo '✓ uv publish successful' &&
+
+        sleep 2 &&
+        uv pip install --index-url $$PYPI_URL/simple/ uv-docker-test &&
+        echo '✓ uv install successful'
+      "
+
+  test-web-ui:
+    image: curlimages/curl:latest
+    container_name: pypi-test-ui
+    depends_on:
+      test-uv:
+        condition: service_completed_successfully
+    environment:
+      - PYPI_URL=http://pypi:8080
+    command: >
+      sh -c "
+        set -e
+        echo '=== Testing Web UI ===' &&
+
+        curl -f $$PYPI_URL/ &&
+        echo '✓ Root URL accessible' &&
+
+        curl -f $$PYPI_URL/simple/ &&
+        echo '✓ /simple/ index accessible' &&
+
+        curl -s $$PYPI_URL/simple/ | grep -q test-package &&
+        echo '✓ Package found in index' &&
+
+        curl -f $$PYPI_URL/simple/test-package/ &&
+        echo '✓ Package detail page accessible' &&
+
+        echo '✓ All Web UI tests passed'
+      "
+
+  # Final status reporter
+  test-summary:
+    image: alpine:latest
+    container_name: pypi-test-summary
+    depends_on:
+      test-web-ui:
+        condition: service_completed_successfully
+    command: >
+      sh -c "
+        echo '' &&
+        echo '=====================================' &&
+        echo '   All Docker Compose Tests Passed!' &&
+        echo '=====================================' &&
+        echo '' &&
+        echo 'Tests completed:' &&
+        echo '  ✓ twine upload' &&
+        echo '  ✓ pip install' &&
+        echo '  ✓ uv publish' &&
+        echo '  ✓ uv install' &&
+        echo '  ✓ Web UI' &&
+        echo '' &&
+        echo 'PyPI server is working correctly!' &&
+        echo ''
+      "
+
+volumes:
+  pypi-packages:
+    driver: local

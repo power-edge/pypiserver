@@ -1,0 +1,79 @@
+# S3 CSI with high availability test
+# Tests: S3 backend + HA (multiple replicas) + autoscaling
+# Takes advantage of S3 CSI's ReadWriteMany support
+
+pypiserver:
+  # Start with 2 replicas
+  replicaCount: 2
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Enable autoscaling (S3 CSI supports ReadWriteMany)
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+
+storage:
+  backend: s3
+  local:
+    enabled: false
+  s3:
+    enabled: true
+    bucket: pypi-packages
+    region: us-east-1
+    accessKeyId: minioadmin
+    secretAccessKey: minioadmin
+    csi:
+      enabled: true
+      endpoint: "http://minio:9000"
+      prefix: "s3-ha/"
+      size: "10Gi"
+
+auth:
+  enabled: true
+  method: htpasswd
+  htpasswd:
+    # Username: testuser, Password: testpass
+    content: |
+      testuser:$2y$05$vW7PYPe9.VL1aYh8DcJlOuqEr3mVN9C3y/HU9VQzC8qbKwWbGKdTK
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: pypi.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+monitoring:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - pypiserver
+          topologyKey: kubernetes.io/hostname

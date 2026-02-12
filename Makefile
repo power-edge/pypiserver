@@ -9,9 +9,12 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Examples:"
-	@echo "  make lint              # Lint Helm chart"
-	@echo "  make test              # Run all tests"
-	@echo "  make package           # Package chart for distribution"
+	@echo "  make lint                  # Lint Helm chart"
+	@echo "  make test                  # Run validation tests"
+	@echo "  make test-docker-compose   # Quick Docker Compose test (no K8s)"
+	@echo "  make test-all              # All K8s tests (requires k3d)"
+	@echo "  make test-comprehensive    # Everything (K8s + Compose)"
+	@echo "  make package               # Package chart for distribution"
 
 # Variables
 CHART_DIR := helm
@@ -229,6 +232,50 @@ test-ha-config: ## Test high availability configuration
 	fi
 	@echo "✓ HA config test passed"
 
+.PHONY: test-s3-auth
+test-s3-auth: test-setup-minio ## Test S3 CSI with authentication
+	@echo "Testing S3 CSI with authentication..."
+	helm install $(TEST_RELEASE) $(CHART_DIR) \
+		-f test/values/test-s3-auth.yaml \
+		--namespace $(TEST_NAMESPACE) \
+		--wait --timeout 5m
+	helm test $(TEST_RELEASE) -n $(TEST_NAMESPACE) --logs
+	@echo "✓ S3 CSI + auth test passed"
+
+.PHONY: test-s3-ha
+test-s3-ha: test-setup-minio ## Test S3 CSI with high availability
+	@echo "Testing S3 CSI with HA..."
+	helm install $(TEST_RELEASE) $(CHART_DIR) \
+		-f test/values/test-s3-ha.yaml \
+		--namespace $(TEST_NAMESPACE) \
+		--wait --timeout 5m
+	@echo "Verifying multiple replicas..."
+	@if [ $$(kubectl get pods -n $(TEST_NAMESPACE) -l app.kubernetes.io/name=pypiserver -o name | wc -l) -lt 2 ]; then \
+		echo "ERROR: Expected 2+ replicas"; \
+		exit 1; \
+	fi
+	helm test $(TEST_RELEASE) -n $(TEST_NAMESPACE) --logs
+	@echo "Testing pod failure resilience..."
+	@kubectl delete pod -n $(TEST_NAMESPACE) \
+		-l app.kubernetes.io/name=pypiserver \
+		--field-selector status.phase=Running \
+		--wait=false | head -1
+	@sleep 5
+	@kubectl run -n $(TEST_NAMESPACE) test-curl --rm -i --restart=Never \
+		--image=curlimages/curl:latest -- \
+		curl -f http://$(TEST_RELEASE)-pypiserver:8080/
+	@echo "✓ S3 CSI + HA test passed"
+
+.PHONY: test-docker-compose
+test-docker-compose: ## Test with Docker Compose (standalone, no K8s)
+	@echo "Testing with Docker Compose..."
+	docker compose -f docker-compose.test.yaml up \
+		--abort-on-container-exit \
+		--exit-code-from test-summary
+	@echo "✓ Docker Compose test passed"
+	@echo "Cleaning up..."
+	docker compose -f docker-compose.test.yaml down -v
+
 .PHONY: test-clean
 test-clean: ## Clean up test installation
 	@echo "Cleaning up test installation..."
@@ -239,15 +286,63 @@ test-clean: ## Clean up test installation
 .PHONY: test-all
 test-all: test-cluster-create test-setup ## Run all test configurations
 	@echo "Running full test suite..."
+	@echo ""
+	@echo "=== Test 1/6: Minimal Config ==="
 	@$(MAKE) test-minimal
 	@$(MAKE) test-clean
+	@echo ""
+	@echo "=== Test 2/6: Local PV + Auth ==="
 	@$(MAKE) test-local-pv-auth
 	@$(MAKE) test-clean
+	@echo ""
+	@echo "=== Test 3/6: HA Config ==="
 	@$(MAKE) test-ha-config
 	@$(MAKE) test-clean
-	@echo "✓ All tests passed!"
 	@echo ""
-	@echo "To test S3 CSI, run: make test-minio-s3"
+	@echo "=== Test 4/6: S3 CSI (MinIO) ==="
+	@$(MAKE) test-minio-s3
+	@$(MAKE) test-clean
+	@echo ""
+	@echo "=== Test 5/6: S3 CSI + Auth ==="
+	@$(MAKE) test-s3-auth
+	@$(MAKE) test-clean
+	@echo ""
+	@echo "=== Test 6/6: S3 CSI + HA ==="
+	@$(MAKE) test-s3-ha
+	@$(MAKE) test-clean
+	@echo ""
+	@echo "✓ All Kubernetes tests passed (6/6)!"
+	@echo ""
+	@echo "To test with Docker Compose, run: make test-docker-compose"
+	@echo "To delete cluster, run: make test-cluster-delete"
+
+.PHONY: test-comprehensive
+test-comprehensive: ## Run ALL tests (K8s + Docker Compose)
+	@echo "Running comprehensive test suite..."
+	@echo ""
+	@echo "================================================"
+	@echo "  PART 1: Kubernetes Tests (6 configurations)"
+	@echo "================================================"
+	@$(MAKE) test-all
+	@echo ""
+	@echo "================================================"
+	@echo "  PART 2: Docker Compose Test (standalone)"
+	@echo "================================================"
+	@$(MAKE) test-docker-compose
+	@echo ""
+	@echo "================================================"
+	@echo "  ✓ ALL TESTS PASSED! (6 K8s + 1 Compose)"
+	@echo "================================================"
+	@echo ""
+	@echo "Summary:"
+	@echo "  ✓ test-minimal (local PV, no auth)"
+	@echo "  ✓ test-local-pv-auth (local PV + auth)"
+	@echo "  ✓ test-ha-config (HA, no S3)"
+	@echo "  ✓ test-minio-s3 (S3 CSI)"
+	@echo "  ✓ test-s3-auth (S3 CSI + auth)"
+	@echo "  ✓ test-s3-ha (S3 CSI + HA)"
+	@echo "  ✓ test-docker-compose (standalone)"
+	@echo ""
 	@echo "To delete cluster, run: make test-cluster-delete"
 
 .PHONY: test-quick

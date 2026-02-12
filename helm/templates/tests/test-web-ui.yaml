@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-web-ui"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "15"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: web-ui-test
+      image: curlimages/curl:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          set -e
+
+          echo "=== PyPI Web UI Test ==="
+
+          PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+
+          # Test 1: Root URL returns HTML
+          echo "Testing root URL..."
+          ROOT_RESPONSE=$(curl -s "$PYPI_URL/")
+
+          if ! echo "$ROOT_RESPONSE" | grep -qi "html\|pypi"; then
+            echo "ERROR: Root URL doesn't return HTML"
+            echo "Response: $ROOT_RESPONSE"
+            exit 1
+          fi
+
+          echo "✓ Root URL returns content"
+
+          # Test 2: /simple/ index is accessible
+          echo "Testing /simple/ index..."
+          curl -f "$PYPI_URL/simple/" || {
+            echo "ERROR: /simple/ index not accessible"
+            exit 1
+          }
+
+          echo "✓ /simple/ index accessible"
+
+          # Test 3: Verify HTML structure
+          echo "Testing HTML structure..."
+          SIMPLE_HTML=$(curl -s "$PYPI_URL/simple/")
+
+          if ! echo "$SIMPLE_HTML" | grep -qi "<html\|<a href"; then
+            echo "ERROR: /simple/ doesn't return valid HTML"
+            exit 1
+          fi
+
+          echo "✓ HTML structure valid"
+
+          # Test 4: If packages exist, verify package pages work
+          echo "Checking for existing packages..."
+          if echo "$SIMPLE_HTML" | grep -q "helm-test-package"; then
+            echo "Found helm-test-package, testing detail page..."
+
+            curl -f "$PYPI_URL/simple/helm-test-package/" || {
+              echo "ERROR: Package detail page not accessible"
+              exit 1
+            }
+
+            echo "✓ Package detail page accessible"
+
+            # Verify download links
+            PACKAGE_PAGE=$(curl -s "$PYPI_URL/simple/helm-test-package/")
+            if ! echo "$PACKAGE_PAGE" | grep -q "\.tar\.gz\|\.whl"; then
+              echo "ERROR: No download links found"
+              exit 1
+            fi
+
+            echo "✓ Download links present"
+          else
+            echo "ℹ No packages uploaded yet (expected for minimal test)"
+          fi
+
+          # Test 5: Verify no 500 errors on common endpoints
+          echo "Testing error handling..."
+
+          # Non-existent package should return 404, not 500
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PYPI_URL/simple/does-not-exist/")
+          if [ "$HTTP_CODE" = "500" ]; then
+            echo "ERROR: Server returns 500 for missing package"
+            exit 1
+          fi
+
+          echo "✓ Error handling correct (no 500 errors)"
+
+          # Test 6: Verify content-type headers
+          echo "Testing content-type headers..."
+          CONTENT_TYPE=$(curl -s -I "$PYPI_URL/simple/" | grep -i "content-type" || echo "not found")
+
+          if echo "$CONTENT_TYPE" | grep -qi "html"; then
+            echo "✓ Content-Type header correct"
+          else
+            echo "WARNING: Content-Type might not be HTML (some pypiserver versions don't set it)"
+          fi
+
+          echo ""
+          echo "=== All Web UI tests passed! ==="

@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-multi-version"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "30"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: multi-version-test
+      image: python:3.11-slim
+      command: ['sh', '-c']
+      args:
+        - |
+          set -e
+
+          echo "=== Multiple Versions Test ==="
+
+          PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+
+          # Install tools
+          pip install --quiet twine build
+
+          # Upload multiple versions of the same package
+          for version in 1.0.0 1.0.1 1.1.0 2.0.0 2.0.1; do
+            echo "Creating version $version..."
+
+            mkdir -p /tmp/pkg-$version/multiversion
+
+            cat > /tmp/pkg-$version/pyproject.toml << EOF
+          [build-system]
+          requires = ["setuptools>=45"]
+          build-backend = "setuptools.build_meta"
+
+          [project]
+          name = "multi-version-test"
+          version = "$version"
+          description = "Test package for multi-version support"
+          requires-python = ">=3.8"
+          EOF
+
+            cat > /tmp/pkg-$version/multiversion/__init__.py << EOF
+          """Multi-version test package."""
+          __version__ = "$version"
+
+          def get_version():
+              return "$version"
+          EOF
+
+            cat > /tmp/pkg-$version/README.md << EOF
+          # Multi-Version Test Package v$version
+          EOF
+
+            # Build package
+            cd /tmp/pkg-$version
+            python -m build --quiet
+
+            # Upload package
+            echo "Uploading version $version..."
+            {{- if .Values.auth.enabled }}
+            twine upload \
+              --repository-url "$PYPI_URL" \
+              --username testuser \
+              --password testpass \
+              --disable-progress-bar \
+              --non-interactive \
+              dist/*.tar.gz || {
+                echo "ERROR: Failed to upload version $version"
+                exit 1
+              }
+            {{- else }}
+            twine upload \
+              --repository-url "$PYPI_URL" \
+              --disable-progress-bar \
+              --non-interactive \
+              dist/*.tar.gz || {
+                echo "ERROR: Failed to upload version $version"
+                exit 1
+              }
+            {{- end }}
+
+            echo "✓ Version $version uploaded"
+          done
+
+          echo ""
+          echo "All versions uploaded. Verifying..."
+
+          # Verify all versions appear in package index
+          echo "Checking package index..."
+          PACKAGE_PAGE=$(curl -s "$PYPI_URL/simple/multi-version-test/")
+
+          for version in 1.0.0 1.0.1 1.1.0 2.0.0 2.0.1; do
+            if ! echo "$PACKAGE_PAGE" | grep -q "multi.version.test-$version"; then
+              echo "ERROR: Version $version not found in index"
+              echo "Package page content:"
+              echo "$PACKAGE_PAGE"
+              exit 1
+            fi
+            echo "✓ Version $version found in index"
+          done
+
+          # Test installing specific versions
+          echo ""
+          echo "Testing version pinning..."
+
+          # Install v1.0.0
+          pip install --quiet --index-url "$PYPI_URL/simple/" multi-version-test==1.0.0
+          INSTALLED_VERSION=$(python -c "import multiversion; print(multiversion.__version__)")
+          if [ "$INSTALLED_VERSION" != "1.0.0" ]; then
+            echo "ERROR: Expected 1.0.0, got $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "✓ Installed specific version 1.0.0"
+          pip uninstall -y multi-version-test
+
+          # Install v1.1.0
+          pip install --quiet --index-url "$PYPI_URL/simple/" multi-version-test==1.1.0
+          INSTALLED_VERSION=$(python -c "import multiversion; print(multiversion.__version__)")
+          if [ "$INSTALLED_VERSION" != "1.1.0" ]; then
+            echo "ERROR: Expected 1.1.0, got $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "✓ Installed specific version 1.1.0"
+          pip uninstall -y multi-version-test
+
+          # Install latest (should be 2.0.1)
+          echo ""
+          echo "Testing latest version discovery..."
+          pip install --quiet --index-url "$PYPI_URL/simple/" multi-version-test
+          INSTALLED_VERSION=$(python -c "import multiversion; print(multiversion.__version__)")
+          if [ "$INSTALLED_VERSION" != "2.0.1" ]; then
+            echo "ERROR: Expected latest version 2.0.1, got $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "✓ Latest version (2.0.1) installed correctly"
+          pip uninstall -y multi-version-test
+
+          # Test version range (>=1.0,<2.0)
+          echo ""
+          echo "Testing version ranges..."
+          pip install --quiet --index-url "$PYPI_URL/simple/" "multi-version-test>=1.0,<2.0"
+          INSTALLED_VERSION=$(python -c "import multiversion; print(multiversion.__version__)")
+          # Should install 1.1.0 (latest in 1.x range)
+          if [ "$INSTALLED_VERSION" != "1.1.0" ]; then
+            echo "WARNING: Expected 1.1.0 for range >=1.0,<2.0, got $INSTALLED_VERSION"
+            echo "(pip version resolution may vary)"
+          else
+            echo "✓ Version range resolved correctly"
+          fi
+          pip uninstall -y multi-version-test
+
+          # Test upgrade
+          echo ""
+          echo "Testing package upgrade..."
+          pip install --quiet --index-url "$PYPI_URL/simple/" multi-version-test==1.0.0
+          pip install --quiet --upgrade --index-url "$PYPI_URL/simple/" multi-version-test
+          INSTALLED_VERSION=$(python -c "import multiversion; print(multiversion.__version__)")
+          if [ "$INSTALLED_VERSION" != "2.0.1" ]; then
+            echo "ERROR: Upgrade failed, expected 2.0.1, got $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "✓ Package upgrade works"
+
+          echo ""
+          echo "=== All multiple versions tests passed! ==="
+          echo "Successfully tested 5 versions: 1.0.0, 1.0.1, 1.1.0, 2.0.0, 2.0.1"
