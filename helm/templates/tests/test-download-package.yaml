@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-download"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "20"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: download-test
+      image: python:3.11-slim
+      command: ['sh', '-c']
+      args:
+        - |
+          set -e
+
+          echo "=== PyPI Package Download Test ==="
+
+          PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+
+          # Wait a moment for upload test to complete
+          echo "Waiting for package to be available..."
+          sleep 5
+
+          # Verify package exists in index
+          echo "Checking /simple/ index..."
+          curl -f "$PYPI_URL/simple/" | grep -q "helm-test-package" || {
+            echo "ERROR: Package not found in /simple/ index"
+            echo "Available packages:"
+            curl -s "$PYPI_URL/simple/" || echo "Could not fetch index"
+            exit 1
+          }
+
+          echo "✓ Package found in index"
+
+          # Install package using pip
+          echo "Installing package via pip..."
+          {{- if .Values.auth.enabled }}
+          # Install with authentication
+          pip install --quiet \
+            --index-url "http://$PYPI_USERNAME:$PYPI_PASSWORD@{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}/simple/" \
+            helm-test-package==1.0.0 || {
+              echo "ERROR: Package installation failed (with auth)"
+              exit 1
+            }
+          {{- else }}
+          # Install without authentication
+          pip install --quiet \
+            --index-url "$PYPI_URL/simple/" \
+            helm-test-package==1.0.0 || {
+              echo "ERROR: Package installation failed (no auth)"
+              exit 1
+            }
+          {{- end }}
+
+          echo "✓ Package installed successfully!"
+
+          # Verify package can be imported
+          echo "Testing package import..."
+          python -c "import helmtest; print(f'Package version: {helmtest.__version__}')" || {
+            echo "ERROR: Package import failed"
+            exit 1
+          }
+
+          echo "✓ Package import successful!"
+
+          # Verify package function works
+          echo "Testing package functionality..."
+          python -c "from helmtest import hello; result = hello(); print(f'Function result: {result}')" || {
+            echo "ERROR: Package function call failed"
+            exit 1
+          }
+
+          echo "✓ Package function works!"
+
+          # Verify package can be listed
+          echo "Verifying pip list..."
+          pip list | grep -q "helm-test-package" || {
+            echo "ERROR: Package not found in pip list"
+            exit 1
+          }
+
+          echo "✓ Package appears in pip list!"
+
+          echo ""
+          echo "=== All download tests passed! ==="
+      {{- if .Values.auth.enabled }}
+      env:
+        - name: PYPI_USERNAME
+          value: "testuser"
+        - name: PYPI_PASSWORD
+          value: "testpass"
+      {{- end }}

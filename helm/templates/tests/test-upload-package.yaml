@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "pypiserver.fullname" . }}-test-upload"
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: upload-test
+      image: python:3.11-slim
+      command: ['sh', '-c']
+      args:
+        - |
+          set -e
+
+          echo "=== PyPI Package Upload Test ==="
+
+          # Install tools
+          echo "Installing twine and build..."
+          pip install --quiet twine build
+
+          # Create minimal test package
+          echo "Creating test package..."
+          mkdir -p /tmp/testpkg/helmtest
+
+          cat > /tmp/testpkg/pyproject.toml << 'EOF'
+          [build-system]
+          requires = ["setuptools>=45", "wheel"]
+          build-backend = "setuptools.build_meta"
+
+          [project]
+          name = "helm-test-package"
+          version = "1.0.0"
+          description = "Test package for Helm chart validation"
+          authors = [{name = "Helm Test", email = "test@example.com"}]
+          requires-python = ">=3.8"
+          EOF
+
+          cat > /tmp/testpkg/helmtest/__init__.py << 'EOF'
+          """Helm test package."""
+          __version__ = "1.0.0"
+
+          def hello():
+              return "Hello from helm-test-package!"
+          EOF
+
+          cat > /tmp/testpkg/README.md << 'EOF'
+          # Helm Test Package
+          This package is created by Helm tests to validate PyPI server functionality.
+          EOF
+
+          # Build package
+          echo "Building package..."
+          cd /tmp/testpkg
+          python -m build --quiet
+
+          # Verify package was built
+          if [ ! -f dist/helm_test_package-1.0.0.tar.gz ]; then
+            echo "ERROR: Package build failed - no .tar.gz found"
+            exit 1
+          fi
+
+          # Upload to PyPI server
+          echo "Uploading package to PyPI server..."
+          PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+
+          {{- if .Values.auth.enabled }}
+          # Upload with authentication
+          if [ -z "$PYPI_USERNAME" ] || [ -z "$PYPI_PASSWORD" ]; then
+            echo "ERROR: Auth enabled but credentials not provided"
+            exit 1
+          fi
+
+          twine upload \
+            --repository-url "$PYPI_URL" \
+            --username "$PYPI_USERNAME" \
+            --password "$PYPI_PASSWORD" \
+            --disable-progress-bar \
+            --non-interactive \
+            dist/*.tar.gz || {
+              echo "ERROR: Package upload failed (with auth)"
+              exit 1
+            }
+          {{- else }}
+          # Upload without authentication
+          twine upload \
+            --repository-url "$PYPI_URL" \
+            --disable-progress-bar \
+            --non-interactive \
+            dist/*.tar.gz || {
+              echo "ERROR: Package upload failed (no auth)"
+              exit 1
+            }
+          {{- end }}
+
+          echo "✓ Package upload successful!"
+
+          # Verify package appears in index
+          echo "Verifying package in /simple/ index..."
+          curl -f "$PYPI_URL/simple/" | grep -q "helm-test-package" || {
+            echo "ERROR: Package not found in /simple/ index"
+            exit 1
+          }
+
+          echo "✓ Package found in index!"
+
+          # Verify package detail page exists
+          curl -f "$PYPI_URL/simple/helm-test-package/" | grep -q "helm_test_package-1.0.0.tar.gz" || {
+            echo "ERROR: Package file not found in package detail page"
+            exit 1
+          }
+
+          echo "✓ Package detail page correct!"
+
+          echo ""
+          echo "=== All upload tests passed! ==="
+      {{- if .Values.auth.enabled }}
+      env:
+        # For testing, use fixed credentials
+        # In production, users should provide their own auth secret
+        - name: PYPI_USERNAME
+          value: "testuser"
+        - name: PYPI_PASSWORD
+          value: "testpass"
+      {{- end }}
