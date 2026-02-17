@@ -55,7 +55,7 @@ services:
         set -e
         echo '=== Testing pip install ===' &&
         sleep 2 &&
-        pip install --index-url $$PYPI_URL/simple/ test-package &&
+        pip install --index-url $$PYPI_URL/simple/ --trusted-host pypi test-package &&
         python -c 'import test_package; print(test_package.hello())' &&
         echo '✓ Package installed and works'
       "

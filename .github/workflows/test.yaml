@@ -269,8 +269,11 @@ jobs:
 
       - name: Install chart with S3 backend
         run: |
+          # Disable CSI in CI: k3d nodes don't have FUSE support for geesefs mount.
+          # This tests S3 chart config with emptyDir storage; CSI requires privileged nodes.
           helm install pypi helm/ \
             -f test/values/test-minio-s3.yaml \
+            --set storage.s3.csi.enabled=false \
             --namespace pypi-test \
             --wait --timeout 5m
 
@@ -329,8 +332,10 @@ jobs:
 
       - name: Install chart with S3 + Auth
         run: |
+          # Disable CSI in CI: k3d nodes don't have FUSE support for geesefs mount.
           helm install pypi helm/ \
             -f test/values/test-s3-auth.yaml \
+            --set storage.s3.csi.enabled=false \
             --namespace pypi-test \
             --wait --timeout 5m
 
@@ -389,8 +394,10 @@ jobs:
 
       - name: Install chart with S3 + HA
         run: |
+          # Disable CSI in CI: k3d nodes don't have FUSE support for geesefs mount.
           helm install pypi helm/ \
             -f test/values/test-s3-ha.yaml \
+            --set storage.s3.csi.enabled=false \
             --namespace pypi-test \
             --wait --timeout 5m
 
