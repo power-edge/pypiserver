@@ -5,8 +5,6 @@
 #   docker compose -f docker-compose.test.yaml up --abort-on-container-exit
 #   docker compose -f docker-compose.test.yaml down -v
 
-version: '3.8'
-
 services:
   pypi:
     image: pypiserver/pypiserver:v2.0.1
@@ -40,7 +38,7 @@ services:
         pip install --quiet twine build &&
         cd /workspace &&
         python -m build &&
-        twine upload --repository-url $$PYPI_URL --disable-progress-bar dist/* &&
+        twine upload --repository-url $$PYPI_URL --username anonymous --password anonymous --disable-progress-bar dist/* &&
         echo '✓ Package uploaded successfully'
       "
 

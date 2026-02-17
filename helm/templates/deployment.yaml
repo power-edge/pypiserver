@@ -48,7 +48,7 @@ spec:
             - -P
             - /auth/htpasswd
             - -a
-            - update,download,list
+            - update
             {{- else }}
             - -P
             - "."

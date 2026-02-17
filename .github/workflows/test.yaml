@@ -256,8 +256,10 @@ jobs:
 
       - name: Install csi-s3 driver
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/rbac.yaml
+          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/provisioner.yaml
+          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/driver.yaml
           kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/csi-s3.yaml
+          kubectl rollout status statefulset csi-s3-provisioner -n kube-system --timeout=120s
           kubectl rollout status daemonset csi-s3 -n kube-system --timeout=120s
 
       - name: Install MinIO
@@ -314,8 +316,10 @@ jobs:
 
       - name: Install csi-s3 driver
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/rbac.yaml
+          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/provisioner.yaml
+          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/driver.yaml
           kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/csi-s3.yaml
+          kubectl rollout status statefulset csi-s3-provisioner -n kube-system --timeout=120s
           kubectl rollout status daemonset csi-s3 -n kube-system --timeout=120s
 
       - name: Install MinIO
@@ -372,8 +376,10 @@ jobs:
 
       - name: Install csi-s3 driver
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/rbac.yaml
+          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/provisioner.yaml
+          kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/driver.yaml
           kubectl apply -f https://raw.githubusercontent.com/yandex-cloud/k8s-csi-s3/master/deploy/kubernetes/csi-s3.yaml
+          kubectl rollout status statefulset csi-s3-provisioner -n kube-system --timeout=120s
           kubectl rollout status daemonset csi-s3 -n kube-system --timeout=120s
 
       - name: Install MinIO
@@ -387,6 +393,18 @@ jobs:
             -f test/values/test-s3-ha.yaml \
             --namespace pypi-test \
             --wait --timeout 5m
+
+      - name: Wait for HPA to scale replicas
+        run: |
+          echo "Waiting for HPA to scale to minimum replicas..."
+          for i in $(seq 1 24); do
+            REPLICAS=$(kubectl get pods -n pypi-test -l app.kubernetes.io/name=pypiserver --field-selector=status.phase=Running -o name 2>/dev/null | wc -l)
+            echo "  Attempt $i/24: $REPLICAS running replicas"
+            if [ "$REPLICAS" -ge 2 ]; then
+              break
+            fi
+            sleep 5
+          done
 
       - name: Verify multiple replicas
         run: |

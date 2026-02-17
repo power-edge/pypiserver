@@ -87,9 +87,11 @@ spec:
               exit 1
             }
           {{- else }}
-          # Upload without authentication
+          # Upload without authentication (twine requires credentials even if server doesn't)
           twine upload \
             --repository-url "$PYPI_URL" \
+            --username anonymous \
+            --password anonymous \
             --disable-progress-bar \
             --non-interactive \
             dist/*.tar.gz || {
