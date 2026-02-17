@@ -17,11 +17,11 @@ services:
       - pypi-packages:/data/packages
     command: run -p 8080 -a . -P . /data/packages
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
       interval: 5s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   test-twine-upload:
     image: python:3.11-slim

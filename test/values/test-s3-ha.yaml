@@ -43,7 +43,7 @@ auth:
   htpasswd:
     # Username: testuser, Password: testpass
     content: |
-      testuser:$2y$05$vW7PYPe9.VL1aYh8DcJlOuqEr3mVN9C3y/HU9VQzC8qbKwWbGKdTK
+      testuser:$2y$10$KurSfbKU0QGTDFG03W5GxeLif/0PVrTXyoZFL5SRV1wsgqpc717aS
 
 ingress:
   enabled: true
