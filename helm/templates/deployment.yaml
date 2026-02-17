@@ -44,11 +44,16 @@ spec:
             - run
             - -p
             - "8080"
+            {{- if .Values.auth.enabled }}
             - -P
             - /auth/htpasswd
-            {{- if .Values.auth.enabled }}
             - -a
             - update,download,list
+            {{- else }}
+            - -P
+            - "."
+            - -a
+            - "."
             {{- end }}
             {{- range .Values.pypiserver.extraArgs }}
             - {{ . }}
