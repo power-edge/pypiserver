@@ -102,30 +102,15 @@ spec:
 
           echo "✓ Package upload successful!"
 
-          # Verify package appears in index (using urllib since curl is not in python:3.11-slim)
+          # Verify package appears in index
+          # Use python3 one-liner (curl is not in python:3.11-slim; multi-line -c breaks YAML)
           echo "Verifying package in /simple/ index..."
-          python3 -c "
-import urllib.request, sys
-resp = urllib.request.urlopen('$PYPI_URL/simple/')
-html = resp.read().decode()
-if 'helm-test-package' not in html:
-    print('ERROR: Package not found in /simple/ index')
-    sys.exit(1)
-print('Package found in index!')
-"
+          python3 -c "import urllib.request,sys; h=urllib.request.urlopen('$PYPI_URL/simple/').read().decode(); sys.exit(0) if 'helm-test-package' in h else (print('ERROR: Package not found in /simple/ index') or sys.exit(1))"
 
           echo "✓ Package found in index!"
 
           # Verify package detail page exists
-          python3 -c "
-import urllib.request, sys
-resp = urllib.request.urlopen('$PYPI_URL/simple/helm-test-package/')
-html = resp.read().decode()
-if 'helm_test_package-1.0.0.tar.gz' not in html:
-    print('ERROR: Package file not found in package detail page')
-    sys.exit(1)
-print('Package detail page correct!')
-"
+          python3 -c "import urllib.request,sys; h=urllib.request.urlopen('$PYPI_URL/simple/helm-test-package/').read().decode(); sys.exit(0) if 'helm_test_package-1.0.0.tar.gz' in h else (print('ERROR: Package file not found in package detail page') or sys.exit(1))"
 
           echo "✓ Package detail page correct!"
 
