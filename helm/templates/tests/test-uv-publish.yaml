@@ -110,28 +110,9 @@ spec:
 
           echo "✓ Package published successfully with uv"
 
-          # Verify package appears in index
+          # Verify package is accessible from the PyPI index via install
           echo "Verifying package in PyPI index..."
-          apk add --no-cache curl
-
           sleep 2  # Give server moment to index
-
-          curl -f "$PYPI_URL/simple/" | grep -q "uv-test-package" || {
-            echo "ERROR: Package not found in /simple/ index"
-            echo "Available packages:"
-            curl -s "$PYPI_URL/simple/"
-            exit 1
-          }
-
-          echo "✓ Package found in index"
-
-          # Verify package detail page
-          curl -f "$PYPI_URL/simple/uv-test-package/" | grep -q "uv_test_package-1.0.0" || {
-            echo "ERROR: Package files not found in detail page"
-            exit 1
-          }
-
-          echo "✓ Package detail page correct"
 
           # Install and test the package with uv
           echo "Installing package with uv..."

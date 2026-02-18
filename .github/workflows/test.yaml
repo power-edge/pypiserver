@@ -458,9 +458,11 @@ jobs:
 
       - name: Run Docker Compose tests
         run: |
-          docker compose -f docker-compose.test.yaml up \
-            --abort-on-container-exit \
-            --exit-code-from test-summary
+          # Use 'run' instead of 'up --abort-on-container-exit' to avoid aborting
+          # dependent services when early services exit successfully.
+          # 'run test-summary' starts the full depends_on chain sequentially and
+          # returns test-summary's exit code.
+          docker compose -f docker-compose.test.yaml run --rm test-summary
 
       - name: Show logs on failure
         if: failure()
