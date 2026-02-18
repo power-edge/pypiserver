@@ -62,6 +62,7 @@ services:
 
   test-uv:
     image: ghcr.io/astral-sh/uv:latest
+    entrypoint: ""
     container_name: pypi-test-uv
     depends_on:
       test-pip-install:

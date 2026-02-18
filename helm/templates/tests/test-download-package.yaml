@@ -26,23 +26,20 @@ spec:
           echo "Waiting for package to be available..."
           sleep 5
 
-          # Verify package exists in index
+          # Verify package exists in index (use urllib; python:3.11-slim has no curl)
           echo "Checking /simple/ index..."
-          curl -f "$PYPI_URL/simple/" | grep -q "helm-test-package" || {
-            echo "ERROR: Package not found in /simple/ index"
-            echo "Available packages:"
-            curl -s "$PYPI_URL/simple/" || echo "Could not fetch index"
-            exit 1
-          }
+          python3 -c "import urllib.request,sys; h=urllib.request.urlopen('$PYPI_URL/simple/').read().decode(); sys.exit(0) if 'helm-test-package' in h else (print('ERROR: Package not found in /simple/ index') or sys.exit(1))"
 
           echo "✓ Package found in index"
 
           # Install package using pip
           echo "Installing package via pip..."
+          PYPI_HOST=$(python3 -c "import urllib.parse; print(urllib.parse.urlparse('$PYPI_URL').hostname)")
           {{- if .Values.auth.enabled }}
           # Install with authentication
           pip install --quiet \
             --index-url "http://$PYPI_USERNAME:$PYPI_PASSWORD@{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}/simple/" \
+            --trusted-host "$PYPI_HOST" \
             helm-test-package==1.0.0 || {
               echo "ERROR: Package installation failed (with auth)"
               exit 1
@@ -51,6 +48,7 @@ spec:
           # Install without authentication
           pip install --quiet \
             --index-url "$PYPI_URL/simple/" \
+            --trusted-host "$PYPI_HOST" \
             helm-test-package==1.0.0 || {
               echo "ERROR: Package installation failed (no auth)"
               exit 1
