@@ -12,13 +12,14 @@ spec:
   restartPolicy: Never
   containers:
     - name: uv-publish-test
-      image: ghcr.io/astral-sh/uv:latest
+      image: python:3.11-slim
       command: ['sh', '-c']
       args:
         - |
           set -e
 
           echo "=== UV Publish Test ==="
+          pip install --quiet uv
 
           PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
 

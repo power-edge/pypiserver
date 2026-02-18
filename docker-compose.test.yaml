@@ -61,8 +61,7 @@ services:
       "
 
   test-uv:
-    image: ghcr.io/astral-sh/uv:latest
-    entrypoint: ""
+    image: python:3.11-slim
     container_name: pypi-test-uv
     depends_on:
       test-pip-install:
@@ -74,6 +73,7 @@ services:
       sh -c "
         set -e
         echo '=== Testing uv publish ===' &&
+        pip install --quiet uv &&
 
         uv init --name uv-docker-test --lib &&
         cd uv-docker-test &&
