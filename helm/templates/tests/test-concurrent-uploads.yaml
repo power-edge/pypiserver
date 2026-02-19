@@ -81,6 +81,8 @@ spec:
           {{- else }}
           twine upload \
             --repository-url "$PYPI_URL" \
+            --username anonymous \
+            --password anonymous \
             --disable-progress-bar \
             --non-interactive \
             dist/*.tar.gz
