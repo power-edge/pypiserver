@@ -1,0 +1,17 @@
+# ArtifactHub repository metadata
+# See: https://artifacthub.io/docs/topics/repositories/
+#
+# Steps to register:
+# 1. Go to https://artifacthub.io/control-panel/repositories
+# 2. Add repository:
+#    - Name: pypiserver
+#    - URL: https://power-edge.github.io/pypi
+#    - Kind: Helm charts
+# 3. Copy the generated repositoryID into this file
+# 4. Commit and push — ArtifactHub will verify ownership via this file
+
+# repositoryID: <paste-uuid-from-artifacthub-here>
+
+owners:
+  - name: power-edge
+    email: contact@power-edge.dev

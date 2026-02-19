@@ -1,0 +1,140 @@
+{{- if .Values.monitoring.grafana.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.monitoring.grafana.dashboardConfigMap | default (printf "%s-dashboard" (include "pypiserver.fullname" .)) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pypiserver.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+    {{- if .Values.monitoring.grafana.folder }}
+    grafana_folder: {{ .Values.monitoring.grafana.folder | quote }}
+    {{- end }}
+data:
+  pypiserver.json: |
+    {
+      "title": "PyPI Server",
+      "uid": "pypiserver",
+      "tags": ["pypi", "python", "packages"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Request Rate",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus" },
+          "targets": [
+            {
+              "expr": "sum(rate(bottle_request_duration_seconds_count{namespace=\"{{ .Release.Namespace }}\"}[5m])) by (method, path)",
+              "legendFormat": "{{`{{method}}`}} {{`{{path}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": { "mode": "palette-classic" }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Upload Rate",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus" },
+          "targets": [
+            {
+              "expr": "sum(rate(bottle_request_duration_seconds_count{namespace=\"{{ .Release.Namespace }}\", path=~\".*/packages.*\", method=\"POST\"}[5m]))",
+              "legendFormat": "uploads/s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": { "mode": "fixed", "fixedColor": "green" }
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "Error Rate (4xx/5xx)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus" },
+          "targets": [
+            {
+              "expr": "sum(rate(bottle_request_duration_seconds_count{namespace=\"{{ .Release.Namespace }}\", status=~\"4..|5..\"}[5m])) by (status)",
+              "legendFormat": "HTTP {{`{{status}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": { "mode": "fixed", "fixedColor": "red" }
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Pod Memory Usage",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus" },
+          "targets": [
+            {
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"{{ .Release.Namespace }}\", container=\"pypiserver\"}) by (pod)",
+              "legendFormat": "{{`{{pod}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "color": { "mode": "palette-classic" }
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "Pod CPU Usage",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus" },
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"{{ .Release.Namespace }}\", container=\"pypiserver\"}[5m])) by (pod)",
+              "legendFormat": "{{`{{pod}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "color": { "mode": "palette-classic" }
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "Response Latency (p99)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus" },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(bottle_request_duration_seconds_bucket{namespace=\"{{ .Release.Namespace }}\"}[5m])) by (le, path))",
+              "legendFormat": "p99 {{`{{path}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": { "mode": "palette-classic" }
+            }
+          }
+        }
+      ]
+    }
+{{- end }}

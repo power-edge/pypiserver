@@ -8,7 +8,7 @@ pypiserver:
   image:
     repository: pypiserver/pypiserver
     pullPolicy: IfNotPresent
-    tag: "v2.0.1"  # https://github.com/pypiserver/pypiserver/releases
+    tag: "v2.4.1"  # https://github.com/pypiserver/pypiserver/releases
 
   # Replica count (set to 2+ for HA)
   replicaCount: 1
@@ -153,10 +153,11 @@ monitoring:
       scrapeTimeout: 10s
       labels: {}
 
-  # Grafana dashboard (ConfigMap)
+  # Grafana dashboard (ConfigMap with auto-discovery labels for grafana-sidecar)
   grafana:
     enabled: false
     dashboardConfigMap: pypi-dashboard
+    folder: "PyPI"  # Grafana folder name (grafana_folder label)
 
 ## Security
 securityContext:
@@ -173,6 +174,20 @@ containerSecurityContext:
     drop:
       - ALL
   readOnlyRootFilesystem: true
+
+## Network Policy
+# Restrict pod ingress/egress at the network level
+networkPolicy:
+  enabled: false
+  # Additional namespace selector for ingress (e.g., monitoring namespace)
+  ingressNamespaceSelector: {}
+  # Additional pod selector for ingress
+  ingressPodSelector: {}
+  # CIDR blocks for S3/object storage egress (leave empty to allow all)
+  egressCIDR: []
+  # Example for Hetzner Object Storage:
+  # egressCIDR:
+  #   - 128.140.0.0/13  # Hetzner FSN1
 
 ## Pod Disruption Budget (for HA)
 podDisruptionBudget:
