@@ -101,7 +101,7 @@ services:
         echo '✓ uv publish successful' &&
 
         sleep 2 &&
-        uv pip install --index-url $$PYPI_URL/simple/ uv-docker-test &&
+        uv pip install --system --index-url $$PYPI_URL/simple/ uv-docker-test &&
         echo '✓ uv install successful'
       "
 

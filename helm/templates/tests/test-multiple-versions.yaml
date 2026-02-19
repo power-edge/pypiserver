@@ -7,7 +7,7 @@ metadata:
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "30"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   restartPolicy: Never
   containers:
@@ -75,6 +75,8 @@ spec:
             {{- else }}
             twine upload \
               --repository-url "$PYPI_URL" \
+              --username anonymous \
+              --password anonymous \
               --disable-progress-bar \
               --non-interactive \
               dist/*.tar.gz || {

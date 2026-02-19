@@ -7,7 +7,7 @@ metadata:
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "25"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   restartPolicy: Never
   containers:
@@ -117,7 +117,7 @@ spec:
 
           # Install and test the package with uv
           echo "Installing package with uv..."
-          uv pip install --index-url "$PYPI_URL/simple/" uv-test-package==1.0.0 || {
+          uv pip install --system --index-url "$PYPI_URL/simple/" uv-test-package==1.0.0 || {
             echo "ERROR: Failed to install package with uv"
             exit 1
           }
