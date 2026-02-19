@@ -107,6 +107,9 @@ spec:
           done
 
           # Test installing specific versions
+          # Move out of the package source dirs so Python doesn't find local modules
+          cd /tmp
+
           echo ""
           echo "Testing version pinning..."
 

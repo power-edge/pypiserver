@@ -75,7 +75,7 @@ services:
         echo '=== Testing uv publish ===' &&
         pip install --quiet uv &&
 
-        uv init --name uv-docker-test --lib &&
+        uv init uv-docker-test --lib &&
         cd uv-docker-test &&
 
         cat > pyproject.toml << 'EOF'
