@@ -1,0 +1,47 @@
+apiVersion: v1
+entries:
+  pypiserver:
+  - annotations:
+      artifacthub.io/category: integration-delivery
+      artifacthub.io/changes: |
+        - kind: changed
+          description: Upgrade pypiserver to v2.4.1 (Python 3.13 compat, URL prefix support, waitress 3.0.1)
+        - kind: added
+          description: Grafana dashboard ConfigMap with auto-discovery labels
+        - kind: added
+          description: NetworkPolicy template for pod-level traffic control
+        - kind: added
+          description: values.schema.json for IDE validation and Helm enforcement
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/power-edge/pypi/blob/main/helm/README.md
+        - name: pypiserver
+          url: https://github.com/pypiserver/pypiserver
+        - name: Support
+          url: https://github.com/power-edge/pypi/issues
+      artifacthub.io/prerelease: "false"
+    apiVersion: v2
+    appVersion: 2.4.1
+    created: "2026-02-19T20:13:22.066436752Z"
+    description: Production-ready PyPI server with modern Kubernetes features
+    digest: bdb1012c5c3aaf73a95279c9e064917ff21750001687ecba6828f2161f8f0740
+    home: https://github.com/power-edge/pypi
+    icon: https://pypi.org/static/images/logo-small.svg
+    keywords:
+    - pypi
+    - python
+    - package
+    - registry
+    maintainers:
+    - email: contact@power-edge.dev
+      name: power-edge
+    name: pypiserver
+    sources:
+    - https://github.com/pypiserver/pypiserver
+    type: application
+    urls:
+    - https://github.com/power-edge/pypiserver/releases/download/pypiserver-1.1.0/pypiserver-1.1.0.tgz
+    version: 1.1.0
+generated: "2026-02-19T20:13:22.06644653Z"
