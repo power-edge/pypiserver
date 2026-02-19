@@ -21,6 +21,7 @@ spec:
           echo "=== Concurrent Uploads Test ==="
 
           PYPI_URL="http://{{ include "pypiserver.fullname" . }}:{{ .Values.service.port }}"
+          PYPI_HOST="{{ include "pypiserver.fullname" . }}"
 
           # Install tools
           pip install --quiet twine build
@@ -153,7 +154,7 @@ spec:
           echo "Testing installation of all packages..."
 
           for i in 1 2 3 4 5; do
-            pip install --quiet --index-url "$PYPI_URL/simple/" concurrent-pkg-$i==1.0.0 || {
+            pip install --quiet --index-url "$PYPI_URL/simple/" --trusted-host "$PYPI_HOST" concurrent-pkg-$i==1.0.0 || {
               echo "ERROR: Failed to install package $i"
               exit 1
             }
@@ -174,7 +175,7 @@ spec:
           echo "Testing concurrent downloads..."
 
           # Install all 5 packages at once
-          pip install --quiet --index-url "$PYPI_URL/simple/" \
+          pip install --quiet --index-url "$PYPI_URL/simple/" --trusted-host "$PYPI_HOST" \
             concurrent-pkg-1 \
             concurrent-pkg-2 \
             concurrent-pkg-3 \
