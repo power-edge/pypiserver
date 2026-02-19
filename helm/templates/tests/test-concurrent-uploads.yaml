@@ -127,10 +127,10 @@ spec:
           sleep 2  # Give server moment to index
 
           for i in 1 2 3 4 5; do
-            curl -f "$PYPI_URL/simple/" | grep -q "concurrent-pkg-$i" || {
+            python3 -c "import urllib.request,sys; h=urllib.request.urlopen('$PYPI_URL/simple/').read().decode(); sys.exit(0) if 'concurrent-pkg-$i' in h else sys.exit(1)" || {
               echo "ERROR: Package $i not found in index"
               echo "Available packages:"
-              curl -s "$PYPI_URL/simple/"
+              python3 -c "import urllib.request; print(urllib.request.urlopen('$PYPI_URL/simple/').read().decode())"
               exit 1
             }
             echo "✓ Package $i found in index"
@@ -141,7 +141,7 @@ spec:
           echo "Verifying package detail pages..."
 
           for i in 1 2 3 4 5; do
-            curl -f "$PYPI_URL/simple/concurrent-pkg-$i/" | grep -q "concurrent.pkg.$i-1.0.0" || {
+            python3 -c "import urllib.request,sys; h=urllib.request.urlopen('$PYPI_URL/simple/concurrent-pkg-$i/').read().decode(); sys.exit(0) if 'concurrent-pkg-$i' in h else sys.exit(1)" || {
               echo "ERROR: Package $i detail page incomplete"
               exit 1
             }

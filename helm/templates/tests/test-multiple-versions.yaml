@@ -93,7 +93,7 @@ spec:
 
           # Verify all versions appear in package index
           echo "Checking package index..."
-          PACKAGE_PAGE=$(curl -s "$PYPI_URL/simple/multi-version-test/")
+          PACKAGE_PAGE=$(python3 -c "import urllib.request; print(urllib.request.urlopen('$PYPI_URL/simple/multi-version-test/').read().decode())")
 
           for version in 1.0.0 1.0.1 1.1.0 2.0.0 2.0.1; do
             if ! echo "$PACKAGE_PAGE" | grep -q "multi.version.test-$version"; then
