@@ -10,7 +10,7 @@
 # 3. Copy the generated repositoryID into this file
 # 4. Commit and push — ArtifactHub will verify ownership via this file
 
-# repositoryID: <paste-uuid-from-artifacthub-here>
+repositoryID: REPLACE_WITH_UUID_FROM_ARTIFACTHUB
 
 owners:
   - name: power-edge

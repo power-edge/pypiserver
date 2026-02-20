@@ -74,7 +74,28 @@ package-sign: validate ## Package and sign Helm chart (requires GPG key)
 # Chart repository management
 .PHONY: index
 index: package ## Generate Helm repository index
-	helm repo index $(DIST_DIR) --url https://power-edge.github.io/charts
+	helm repo index $(DIST_DIR) --url https://power-edge.github.io/pypiserver
+
+.PHONY: artifacthub-notify
+artifacthub-notify: ## Notify ArtifactHub to re-index (requires .env with API keys)
+	@echo "Notifying ArtifactHub to re-index repository..."
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found. Create it with ARTIFACTHUB_API_KEY_ID and ARTIFACTHUB_API_KEY_SECRET"; \
+		exit 1; \
+	fi
+	@. .env && \
+	REPO_ID=$$(grep '^repositoryID:' artifacthub-repo.yml | awk '{print $$2}') && \
+	if [ "$$REPO_ID" = "REPLACE_WITH_UUID_FROM_ARTIFACTHUB" ]; then \
+		echo "ERROR: Update artifacthub-repo.yml with your repositoryID from ArtifactHub first"; \
+		exit 1; \
+	fi && \
+	curl -X POST https://artifacthub.io/api/v1/notifications \
+		-H "X-API-Key-ID: $$ARTIFACTHUB_API_KEY_ID" \
+		-H "X-API-Key-Secret: $$ARTIFACTHUB_API_KEY_SECRET" \
+		-H "Content-Type: application/json" \
+		-d "{\"repositoryID\": \"$$REPO_ID\"}" && \
+	echo "" && \
+	echo "✓ ArtifactHub notified"
 
 # Documentation
 .PHONY: docs
